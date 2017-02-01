@@ -1,5 +1,10 @@
 from __future__ import absolute_import, unicode_literals
 
+from kombu.serialization import (
+    dumps, loads, prepare_accept_content,
+    registry as serializer_registry,
+)
+
 from base64 import b64encode, b64decode
 
 from celery.backends.base import BaseDictBackend
@@ -40,7 +45,7 @@ class DatabaseBackend(BaseDictBackend):
         return self.meta_from_decoded(res)
 
     def encode_content(self, data):
-        content_type, content_encoding, content = self._encode(data)
+        content_type, content_encoding, content = self._future_encode(data)
         if content_encoding == 'binary':
             content = b64encode(content)
         return content_type, content_encoding, content
@@ -56,6 +61,12 @@ class DatabaseBackend(BaseDictBackend):
             self.TaskModel._default_manager.get(task_id=task_id).delete()
         except self.TaskModel.DoesNotExist:
             pass
+
+    def _future_encode(self, data):
+        _encode = getattr(self, '_encode', None)
+        if _encode is None:
+            return dumps(data, serializer=self.serializer)
+        return _encode(data)
 
     def cleanup(self):
         """Delete expired metadata."""
